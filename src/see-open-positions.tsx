@@ -41,7 +41,12 @@ interface PhemexAccountPositionsResponse {
   };
 }
 
-function PositionDetail({ pos, pnl, pnlPercent, leverageLabel }: {
+function PositionDetail({
+  pos,
+  pnl,
+  pnlPercent,
+  leverageLabel,
+}: {
   pos: AccountPosition;
   pnl: number;
   pnlPercent: number;
@@ -62,7 +67,10 @@ function PositionDetail({ pos, pnl, pnlPercent, leverageLabel }: {
           <Detail.Metadata.Label title="Entry Price" text={Number(pos.avgEntryPriceRp).toFixed(4)} />
           <Detail.Metadata.Label title="Mark Price" text={Number(pos.markPriceRp).toFixed(4)} />
           <Detail.Metadata.Label title="Leverage" text={`${leverageEmoji} ${leverageLabel}`} />
-          <Detail.Metadata.Label title="Margin" text={`${pos.usedBalanceRv ? Number(pos.usedBalanceRv).toFixed(4) : "-"} ${pos.currency}`} />
+          <Detail.Metadata.Label
+            title="Margin"
+            text={`${pos.usedBalanceRv ? Number(pos.usedBalanceRv).toFixed(4) : "-"} ${pos.currency}`}
+          />
         </Detail.Metadata>
       }
       markdown={`| ${pos.symbol} | ${pnlEmoji} ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%) |\n|---|---|\n| **Realized PNL** | ${Number(pos.cumClosedPnlRv || 0).toFixed(4)} |\n| **Liquidation Price** | ${Number(pos.liquidationPriceRp || 0).toFixed(4)} |\n| **Assigned Balance** | ${Number(pos.assignedPosBalanceRv || 0).toFixed(4)} |\n| **Position Margin** | ${Number(pos.positionMarginRv || 0).toFixed(4)} |\n| **Fees** | ${Number(pos.cumFundingFeeRv || 0).toFixed(4)} (funding), ${Number(pos.cumTransactFeeRv || 0).toFixed(4)} (transact) |\n| **Mode** | ${pos.posMode} |\n`}
@@ -86,9 +94,7 @@ export default function Command() {
       title: "Credentials required",
       message: "Please set your API Key and Secret in the extension preferences.",
     });
-    return (
-      <List isLoading={false} searchBarPlaceholder="Set your credentials in the extension preferences." />
-    );
+    return <List isLoading={false} searchBarPlaceholder="Set your credentials in the extension preferences." />;
   }
 
   const [state, setState] = useState<{
@@ -120,16 +126,13 @@ export default function Command() {
         const body = "";
         const signature = generateSignature(apiSecret, path, query, expiry, body);
         const url = `https://api.phemex.com${path}?${query}`;
-        const { data } = await axios.get<PhemexAccountPositionsResponse>(
-          url,
-          {
-            headers: {
-              "x-phemex-access-token": apiKey,
-              "x-phemex-request-expiry": expiry.toString(),
-              "x-phemex-request-signature": signature,
-            },
-          }
-        );
+        const { data } = await axios.get<PhemexAccountPositionsResponse>(url, {
+          headers: {
+            "x-phemex-access-token": apiKey,
+            "x-phemex-request-expiry": expiry.toString(),
+            "x-phemex-request-signature": signature,
+          },
+        });
         if (data.code !== 0) {
           throw new Error(data.msg);
         }
@@ -238,27 +241,22 @@ export default function Command() {
                     },
                   },
                 ]}
-                icon={{ tintColor: isLong ? Color.Green : Color.Red, source: isLong ? "arrow-up-circle" : "arrow-down-circle" }}
+                icon={{
+                  tintColor: isLong ? Color.Green : Color.Red,
+                  source: isLong ? "arrow-up-circle" : "arrow-down-circle",
+                }}
                 actions={
                   <ActionPanel>
                     <Action.Push
                       title="Show Details"
                       target={
-                        <PositionDetail
-                          pos={pos}
-                          pnl={pnl}
-                          pnlPercent={pnlPercent}
-                          leverageLabel={leverageLabel}
-                        />
+                        <PositionDetail pos={pos} pnl={pnl} pnlPercent={pnlPercent} leverageLabel={leverageLabel} />
                       }
                     />
-                    <Action.OpenInBrowser
-                      title="Open in Phemex"
-                      url={`https://phemex.com/trade/${pos.symbol}`}
-                    />
+                    <Action.OpenInBrowser title="Open in Phemex" url={`https://phemex.com/trade/${pos.symbol}`} />
                   </ActionPanel>
                 }
-                />
+              />
             );
           })}
       </List.Section>
