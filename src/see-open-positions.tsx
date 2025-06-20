@@ -1,4 +1,4 @@
-import { List, showToast, Toast, Color, ActionPanel, Action, getPreferenceValues } from "@raycast/api";
+import { List, showToast, Toast, Color, ActionPanel, Action, getPreferenceValues, Detail } from "@raycast/api";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import CryptoJS from "crypto-js";
@@ -17,6 +17,13 @@ interface AccountPosition {
   posMode: string;
   crossMargin?: boolean;
   usedBalanceRv?: string;
+  cumClosedPnlRv?: string;
+  liquidationPriceRp?: string;
+  bankruptPriceRp?: string;
+  assignedPosBalanceRv?: string;
+  positionMarginRv?: string;
+  cumFundingFeeRv?: string;
+  cumTransactFeeRv?: string;
 }
 
 interface AccountInfo {
@@ -34,17 +41,53 @@ interface PhemexAccountPositionsResponse {
   };
 }
 
+function PositionDetail({ pos, pnl, pnlPercent, leverageLabel }: {
+  pos: AccountPosition;
+  pnl: number;
+  pnlPercent: number;
+  leverageLabel: string;
+}) {
+  const isLong = pos.side === "Buy";
+  const pnlEmoji = pnl >= 0 ? "🟢" : "🔴";
+  const sideLabel = isLong ? "Long" : "Short";
+  const leverageEmoji = pos.crossMargin ? "⚖️" : "🎚️";
+
+  return (
+    <Detail
+      navigationTitle={`${pos.symbol} (${sideLabel})`}
+      metadata={
+        <Detail.Metadata>
+          <Detail.Metadata.Label title="Side" text={sideLabel} icon={isLong ? "⬆️" : "⬇️"} />
+          <Detail.Metadata.Label title="Size" text={Number(pos.sizeRq).toString()} />
+          <Detail.Metadata.Label title="Entry Price" text={Number(pos.avgEntryPriceRp).toFixed(4)} />
+          <Detail.Metadata.Label title="Mark Price" text={Number(pos.markPriceRp).toFixed(4)} />
+          <Detail.Metadata.Label title="Leverage" text={`${leverageEmoji} ${leverageLabel}`} />
+          <Detail.Metadata.Label title="Margin" text={`${pos.usedBalanceRv ? Number(pos.usedBalanceRv).toFixed(4) : "-"} ${pos.currency}`} />
+        </Detail.Metadata>
+      }
+      markdown={`| ${pos.symbol} | ${pnlEmoji} ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%) |\n|---|---|\n| **Realized PNL** | ${Number(pos.cumClosedPnlRv || 0).toFixed(4)} |\n| **Liquidation Price** | ${Number(pos.liquidationPriceRp || 0).toFixed(4)} |\n| **Assigned Balance** | ${Number(pos.assignedPosBalanceRv || 0).toFixed(4)} |\n| **Position Margin** | ${Number(pos.positionMarginRv || 0).toFixed(4)} |\n| **Fees** | ${Number(pos.cumFundingFeeRv || 0).toFixed(4)} (funding), ${Number(pos.cumTransactFeeRv || 0).toFixed(4)} (transact) |\n| **Mode** | ${pos.posMode} |\n`}
+      actions={
+        <ActionPanel>
+          <Action.OpenInBrowser title="Open in Phemex" url={`https://phemex.com/trade/${pos.symbol}`} />
+          <Action.CopyToClipboard title="Copy Symbol" content={pos.symbol} />
+          <Action.CopyToClipboard title="Copy Position Size" content={Number(pos.sizeRq).toString()} />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
 export default function Command() {
   const preferences = getPreferenceValues<{ apiKey: string; apiSecret: string }>();
 
   if (!preferences.apiKey || !preferences.apiSecret) {
     showToast({
       style: Toast.Style.Failure,
-      title: "Credenciales requeridas",
-      message: "Por favor configura tu API Key y Secret en las preferencias de la extensión.",
+      title: "Credentials required",
+      message: "Please set your API Key and Secret in the extension preferences.",
     });
     return (
-      <List isLoading={false} searchBarPlaceholder="Configura tus credenciales en las preferencias de la extensión." />
+      <List isLoading={false} searchBarPlaceholder="Set your credentials in the extension preferences." />
     );
   }
 
@@ -87,7 +130,6 @@ export default function Command() {
             },
           }
         );
-        console.log("Response data:", data.data.positions.filter((pos) => pos.symbol && pos.sizeRq && pos.side !== "None"));
         if (data.code !== 0) {
           throw new Error(data.msg);
         }
@@ -108,7 +150,7 @@ export default function Command() {
         });
       } catch (error) {
         console.error("Error fetching positions:", error);
-        let errorMsg = "Error desconocido";
+        let errorMsg = "Unknown error";
         if (axios.isAxiosError(error) && error.response && error.response.data) {
           errorMsg = error.response.data.msg || JSON.stringify(error.response.data);
         } else if (error instanceof Error) {
@@ -141,21 +183,21 @@ export default function Command() {
   const totalPnlColor = totalPnl >= 0 ? Color.Green : Color.Red;
 
   return (
-    <List isLoading={state.isLoading} searchBarPlaceholder="Filtra por símbolo o lado">
+    <List isLoading={state.isLoading} searchBarPlaceholder="Filter by symbol or side">
       {state.account && (
-        <List.Section title="Balance de cuenta">
+        <List.Section title="Account Balance">
           <List.Item
             key="account-balance"
             title={`Balance: ${parseFloat(state.account.accountBalanceRv).toFixed(2)} ${state.account.currency}`}
             accessories={[
-              { text: `En uso: ${parseFloat(state.account.totalUsedBalanceRv).toFixed(2)} ${state.account.currency}` },
+              { text: `In Use: ${parseFloat(state.account.totalUsedBalanceRv).toFixed(2)} ${state.account.currency}` },
             ]}
           />
         </List.Section>
       )}
       <List.Section
         title={`Total PNL: ${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(4)}`}
-        subtitle="Suma de PNL no realizado"
+        subtitle="Unrealized PNL Sum"
       >
         <List.Item
           key="total-pnl"
@@ -170,7 +212,7 @@ export default function Command() {
           ]}
         />
       </List.Section>
-      <List.Section title="Posiciones abiertas">
+      <List.Section title="Open Positions">
         {state.positions
           .filter((pos) => pos.symbol && pos.sizeRq && pos.side !== "None")
           .map((pos) => {
@@ -180,13 +222,13 @@ export default function Command() {
             const pnlPercent = entry > 0 && size > 0 ? (pnl / (entry * size)) * 100 : 0;
             const pnlColor = pnl >= 0 ? Color.Green : Color.Red;
             const isLong = pos.side === "Buy";
-            const sideColor = isLong ? Color.Green : Color.Red;
             const sideLabel = isLong ? "Long" : "Short";
             const leverageLabel = pos.crossMargin ? "Cross" : `Isolated ${Math.abs(Number(pos.leverageRr))}x`;
+            const key = `${pos.symbol}-${pos.posSide}`;
             return (
               <List.Item
-                key={`${pos.symbol}-${pos.posSide}`}
-                title={`${pos.symbol} (${Number(pos.sizeRq).toFixed(4)})`}
+                key={key}
+                title={`${pos.symbol} (${pos.sizeRq})`}
                 subtitle={`${sideLabel}`}
                 accessories={[
                   {
@@ -195,21 +237,28 @@ export default function Command() {
                       color: pnlColor,
                     },
                   },
-                  { text: `Entry: ${Number(pos.avgEntryPriceRp).toFixed(4)}` },
-                  { text: `Last Price: ${Number(pos.markPriceRp).toFixed(4)}` },
-                  { text: `${leverageLabel}` },
-                  { text: `Margin: ${pos.usedBalanceRv ? Number(pos.usedBalanceRv).toFixed(4) : "-"} ${pos.currency}` },
                 ]}
-                icon={{ tintColor: sideColor, source: isLong ? "arrow-up-circle" : "arrow-down-circle" }}
+                icon={{ tintColor: isLong ? Color.Green : Color.Red, source: isLong ? "arrow-up-circle" : "arrow-down-circle" }}
                 actions={
                   <ActionPanel>
+                    <Action.Push
+                      title="Show Details"
+                      target={
+                        <PositionDetail
+                          pos={pos}
+                          pnl={pnl}
+                          pnlPercent={pnlPercent}
+                          leverageLabel={leverageLabel}
+                        />
+                      }
+                    />
                     <Action.OpenInBrowser
                       title="Open in Phemex"
                       url={`https://phemex.com/trade/${pos.symbol}`}
                     />
                   </ActionPanel>
                 }
-              />
+                />
             );
           })}
       </List.Section>
