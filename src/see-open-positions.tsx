@@ -3,26 +3,6 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import CryptoJS from "crypto-js";
 
-interface Trade {
-  createdAt: number;
-  symbol: string;
-  currency: string;
-  execQtyRq: string;
-  execPriceRp: string;
-  side: number;
-  orderQtyRq: string;
-  priceRp: string;
-  execValueRv: string;
-  execFeeRv: string;
-  execId: string;
-}
-
-interface PhemexTradeResponse {
-  code: number;
-  msg: string;
-  data: Trade[];
-}
-
 interface AccountPosition {
   symbol: string;
   currency: string;
@@ -35,12 +15,21 @@ interface AccountPosition {
   unRealisedPnlRv: string;
   posSide: string;
   posMode: string;
+  crossMargin?: boolean;
+  usedBalanceRv?: string;
+}
+
+interface AccountInfo {
+  currency: string;
+  accountBalanceRv: string;
+  totalUsedBalanceRv: string;
 }
 
 interface PhemexAccountPositionsResponse {
   code: number;
   msg: string;
   data: {
+    account: AccountInfo;
     positions: AccountPosition[];
   };
 }
@@ -61,10 +50,12 @@ export default function Command() {
 
   const [state, setState] = useState<{
     positions: AccountPosition[];
+    account?: AccountInfo;
     isLoading: boolean;
     error?: string;
   }>({
     positions: [],
+    account: undefined,
     isLoading: true,
   });
 
@@ -96,16 +87,23 @@ export default function Command() {
             },
           }
         );
-        console.log("Response data:", data);
+        console.log("Response data:", data.data.positions.filter((pos) => pos.symbol && pos.sizeRq && pos.side !== "None"));
         if (data.code !== 0) {
           throw new Error(data.msg);
         }
         let positions: AccountPosition[] = [];
-        if (data.data && Array.isArray(data.data.positions)) {
-          positions = data.data.positions;
+        let account: AccountInfo | undefined = undefined;
+        if (data.data) {
+          if (Array.isArray(data.data.positions)) {
+            positions = data.data.positions;
+          }
+          if (data.data.account) {
+            account = data.data.account;
+          }
         }
         setState({
           positions,
+          account,
           isLoading: false,
         });
       } catch (error) {
@@ -144,6 +142,17 @@ export default function Command() {
 
   return (
     <List isLoading={state.isLoading} searchBarPlaceholder="Filtra por símbolo o lado">
+      {state.account && (
+        <List.Section title="Balance de cuenta">
+          <List.Item
+            key="account-balance"
+            title={`Balance: ${parseFloat(state.account.accountBalanceRv).toFixed(2)} ${state.account.currency}`}
+            accessories={[
+              { text: `En uso: ${parseFloat(state.account.totalUsedBalanceRv).toFixed(2)} ${state.account.currency}` },
+            ]}
+          />
+        </List.Section>
+      )}
       <List.Section
         title={`Total PNL: ${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(4)}`}
         subtitle="Suma de PNL no realizado"
@@ -166,24 +175,32 @@ export default function Command() {
           .filter((pos) => pos.symbol && pos.sizeRq && pos.side !== "None")
           .map((pos) => {
             const pnl = parseFloat(pos.unRealisedPnlRv || "0");
+            const entry = parseFloat(pos.avgEntryPriceRp || "0");
+            const size = parseFloat(pos.sizeRq || "0");
+            const pnlPercent = entry > 0 && size > 0 ? (pnl / (entry * size)) * 100 : 0;
             const pnlColor = pnl >= 0 ? Color.Green : Color.Red;
+            const isLong = pos.side === "Buy";
+            const sideColor = isLong ? Color.Green : Color.Red;
+            const sideLabel = isLong ? "Long" : "Short";
+            const leverageLabel = pos.crossMargin ? "Cross" : `Isolated ${Math.abs(Number(pos.leverageRr))}x`;
             return (
               <List.Item
                 key={`${pos.symbol}-${pos.posSide}`}
-                title={pos.symbol}
-                subtitle={`${pos.side} ${pos.sizeRq}`}
+                title={`${pos.symbol} (${Number(pos.sizeRq).toFixed(4)})`}
+                subtitle={`${sideLabel}`}
                 accessories={[
                   {
                     tag: {
-                      value: `${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)}`,
+                      value: `${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)`,
                       color: pnlColor,
                     },
                   },
-                  { text: `Entry: ${pos.avgEntryPriceRp}` },
-                  { text: `Mark: ${pos.markPriceRp}` },
-                  { text: `Leverage: ${pos.leverageRr}` },
-                  { text: `Mode: ${pos.posMode}` },
+                  { text: `Entry: ${Number(pos.avgEntryPriceRp).toFixed(4)}` },
+                  { text: `Last Price: ${Number(pos.markPriceRp).toFixed(4)}` },
+                  { text: `${leverageLabel}` },
+                  { text: `Margin: ${pos.usedBalanceRv ? Number(pos.usedBalanceRv).toFixed(4) : "-"} ${pos.currency}` },
                 ]}
+                icon={{ tintColor: sideColor, source: isLong ? "arrow-up-circle" : "arrow-down-circle" }}
                 actions={
                   <ActionPanel>
                     <Action.OpenInBrowser
