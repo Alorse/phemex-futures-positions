@@ -57,6 +57,11 @@ function PositionDetail({
   const sideLabel = isLong ? "Long" : "Short";
   const leverageEmoji = pos.crossMargin ? "⚖️" : "🎚️";
 
+  const entryPrice = Number(pos.avgEntryPriceRp);
+  const markPrice = Number(pos.markPriceRp);
+  const markDiffPercent = entryPrice > 0 ? ((markPrice - entryPrice) / entryPrice) * 100 : 0;
+  const markDiffStr = `${markPrice.toFixed(4)} (${markDiffPercent >= 0 ? "+" : ""}${markDiffPercent.toFixed(2)}%)`;
+
   return (
     <Detail
       navigationTitle={`${pos.symbol} (${sideLabel})`}
@@ -65,7 +70,7 @@ function PositionDetail({
           <Detail.Metadata.Label title="Side" text={sideLabel} icon={isLong ? "⬆️" : "⬇️"} />
           <Detail.Metadata.Label title="Size" text={Number(pos.sizeRq).toString()} />
           <Detail.Metadata.Label title="Entry Price" text={Number(pos.avgEntryPriceRp).toFixed(4)} />
-          <Detail.Metadata.Label title="Mark Price" text={Number(pos.markPriceRp).toFixed(4)} />
+          <Detail.Metadata.Label title="Mark Price" text={markDiffStr} />
           <Detail.Metadata.Label title="Leverage" text={`${leverageEmoji} ${leverageLabel}`} />
           <Detail.Metadata.Label
             title="Margin"
@@ -222,7 +227,7 @@ export default function Command() {
             const pnl = parseFloat(pos.unRealisedPnlRv || "0");
             const entry = parseFloat(pos.avgEntryPriceRp || "0");
             const size = parseFloat(pos.sizeRq || "0");
-            const pnlPercent = entry > 0 && size > 0 ? (pnl / (entry * size)) * 100 : 0;
+            const pnlPercent = entry > 0 && size > 0 ? (pnl / (entry * size)) * 100 * Number(pos.leverageRr) : 0;
             const pnlColor = pnl >= 0 ? Color.Green : Color.Red;
             const isLong = pos.side === "Buy";
             const sideLabel = isLong ? "Long" : "Short";

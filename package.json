@@ -25,7 +25,7 @@
   "commands": [
     {
       "name": "see-open-positions",
-      "title": "See Open Positions",
+      "title": "Phemex Positions",
       "description": "Check Open Position in your Futures Operations",
       "mode": "view"
     }
