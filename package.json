@@ -1,24 +1,31 @@
 {
-  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "$schema": "https://raycast.com/schemas/extension.json",
   "name": "phemex-futures-positions",
   "title": "Phemex Futures Positions",
-  "description": "Aqui vamos a tener la description para esta vuelta.",
+  "description": "View your open futures positions and account balance on Phemex exchange",
   "icon": "extension-icon.png",
   "author": "alorse",
   "license": "MIT",
-    "preferences": [
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Finance",
+    "Web"
+  ],
+  "preferences": [
     {
       "name": "apiKey",
       "title": "API Key",
       "type": "password",
-      "description": "Generate on: https://phemex.com/es/account/api-management",
+      "description": "Generate on: https://phemex.com/account/api-management",
       "required": true
     },
     {
       "name": "apiSecret",
       "title": "API Secret",
       "type": "password",
-      "description": "Generate on: https://phemex.com/es/account/api-management",
+      "description": "Generate on: https://phemex.com/account/api-management",
       "required": true
     }
   ],
@@ -26,7 +33,7 @@
     {
       "name": "see-open-positions",
       "title": "Phemex Positions",
-      "description": "Check Open Position in your Futures Operations",
+      "description": "View your open futures positions and PNL",
       "mode": "view"
     }
   ],
