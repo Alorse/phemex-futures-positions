@@ -10,6 +10,12 @@ Raycast extension to view your open futures positions on Phemex exchange.
 - Detailed position view with entry price, mark price, leverage, and liquidation price
 - Quick access to Phemex trading interface
 
+## Screenshots
+
+![Positions List](assets/screenshot-1.png)
+
+![Position Detail](assets/screenshot-2.png)
+
 ## Setup
 
 ### 1. Get API Credentials
