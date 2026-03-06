@@ -1,23 +1,35 @@
-import { List, showToast, Toast, Color, ActionPanel, Action, getPreferenceValues } from "@raycast/api";
+import { List, Color, ActionPanel, Action } from "@raycast/api";
 import { PositionDetail } from "./PositionDetail";
-import { usePositions } from "./usePositions";
+import { usePositions } from "./hooks/usePositions";
+import { useCredentials } from "./hooks/useCredentials";
+import {
+  calculatePnl,
+  calculatePnlPercent,
+  calculateTotalPnl,
+  filterActivePositions,
+  getLeverageLabel,
+  isLongPosition,
+  formatCurrency,
+} from "./utils/positionHelpers";
+import { PHEMEX_WEB } from "./utils/constants";
 
 export default function Command() {
-  const preferences = getPreferenceValues<{ apiKey: string; apiSecret: string }>();
+  const { credentials, isValid } = useCredentials();
 
-  if (!preferences.apiKey || !preferences.apiSecret) {
-    showToast({
-      style: Toast.Style.Failure,
-      title: "Credentials required",
-      message: "Please set your API Key and Secret in the extension preferences.",
-    });
-    return <List isLoading={false} searchBarPlaceholder="Set your credentials in the extension preferences." />;
+  if (!isValid) {
+    return (
+      <List isLoading={false} searchBarPlaceholder="Set your credentials in the extension preferences.">
+        <List.EmptyView
+          title="Credentials Required"
+          description="Please set your API Key and Secret in the extension preferences."
+        />
+      </List>
+    );
   }
 
-  const state = usePositions(preferences.apiKey, preferences.apiSecret);
-  const totalPnl = state.positions
-    .filter((pos) => pos.symbol && pos.sizeRq && pos.side !== "None")
-    .reduce((acc, pos) => acc + parseFloat(pos.unRealisedPnlRv || "0"), 0);
+  const state = usePositions(credentials!.apiKey, credentials!.apiSecret);
+  const activePositions = filterActivePositions(state.positions);
+  const totalPnl = calculateTotalPnl(state.positions);
   const totalPnlColor = totalPnl >= 0 ? Color.Green : Color.Red;
 
   return (
@@ -26,15 +38,15 @@ export default function Command() {
         <List.Section title="Account Balance">
           <List.Item
             key="account-balance"
-            title={`Balance: ${parseFloat(state.account.accountBalanceRv).toFixed(2)} ${state.account.currency}`}
+            title={`Balance: ${formatCurrency(state.account.accountBalanceRv)} ${state.account.currency}`}
             accessories={[
-              { text: `In Use: ${parseFloat(state.account.totalUsedBalanceRv).toFixed(2)} ${state.account.currency}` },
+              { text: `In Use: ${formatCurrency(state.account.totalUsedBalanceRv)} ${state.account.currency}` },
             ]}
           />
         </List.Section>
       )}
       <List.Section
-        title={`Total PNL: ${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(4)}`}
+        title={`Total PNL: ${totalPnl >= 0 ? "+" : ""}${formatCurrency(totalPnl)}`}
         subtitle="Unrealized PNL Sum"
       >
         <List.Item
@@ -43,55 +55,52 @@ export default function Command() {
           accessories={[
             {
               tag: {
-                value: `${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(4)}`,
+                value: `${totalPnl >= 0 ? "+" : ""}${formatCurrency(totalPnl)}`,
                 color: totalPnlColor,
               },
             },
           ]}
         />
       </List.Section>
-      <List.Section title="Open Positions">
-        {state.positions
-          .filter((pos) => pos.symbol && pos.sizeRq && pos.side !== "None")
-          .map((pos) => {
-            const pnl = parseFloat(pos.unRealisedPnlRv || "0");
-            const entry = parseFloat(pos.avgEntryPriceRp || "0");
-            const size = parseFloat(pos.sizeRq || "0");
-            const pnlPercent = entry > 0 && size > 0 ? (pnl / (entry * size)) * 100 * Number(pos.leverageRr) : 0;
-            const pnlColor = pnl >= 0 ? Color.Green : Color.Red;
-            const isLong = pos.side === "Buy";
-            const sideLabel = isLong ? "Long" : "Short";
-            const leverageLabel = pos.crossMargin ? "Cross" : `Isolated ${Math.abs(Number(pos.leverageRr))}x`;
-            const key = `${pos.symbol}-${pos.posSide}`;
-            return (
-              <List.Item
-                key={key}
-                title={`${pos.symbol} (${pos.sizeRq})`}
-                subtitle={`${sideLabel}`}
-                accessories={[
-                  {
-                    tag: {
-                      value: `${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)`,
-                      color: pnlColor,
-                    },
+      <List.Section title={`Open Positions (${activePositions.length})`}>
+        {activePositions.map((pos) => {
+          const pnl = calculatePnl(pos);
+          const pnlPercent = calculatePnlPercent(pos);
+          const pnlColor = pnl >= 0 ? Color.Green : Color.Red;
+          const leverageLabel = getLeverageLabel(pos);
+          const key = `${pos.symbol}-${pos.posSide}`;
+
+          return (
+            <List.Item
+              key={key}
+              title={`${pos.symbol} (${pos.sizeRq})`}
+              subtitle={isLongPosition(pos) ? "Long" : "Short"}
+              accessories={[
+                {
+                  tag: {
+                    value: `${pnl >= 0 ? "+" : ""}${formatCurrency(pnl)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)`,
+                    color: pnlColor,
                   },
-                ]}
-                icon={{
-                  tintColor: isLong ? Color.Green : Color.Red,
-                  source: isLong ? "arrow-up-circle" : "arrow-down-circle",
-                }}
-                actions={
-                  <ActionPanel>
-                    <Action.Push
-                      title="Show Details"
-                      target={<PositionDetail pos={pos} pnl={pnl} pnlPercent={pnlPercent} leverageLabel={leverageLabel} />}
-                    />
-                    <Action.OpenInBrowser title="Open in Phemex" url={`https://phemex.com/trade/${pos.symbol}`} />
-                  </ActionPanel>
-                }
-              />
-            );
-          })}
+                },
+              ]}
+              icon={{
+                tintColor: isLongPosition(pos) ? Color.Green : Color.Red,
+                source: isLongPosition(pos) ? "arrow-up-circle" : "arrow-down-circle",
+              }}
+              actions={
+                <ActionPanel>
+                  <Action.Push
+                    title="Show Details"
+                    target={
+                      <PositionDetail pos={pos} pnl={pnl} pnlPercent={pnlPercent} leverageLabel={leverageLabel} />
+                    }
+                  />
+                  <Action.OpenInBrowser title="Open in Phemex" url={PHEMEX_WEB.TRADE(pos.symbol)} />
+                </ActionPanel>
+              }
+            />
+          );
+        })}
       </List.Section>
     </List>
   );
